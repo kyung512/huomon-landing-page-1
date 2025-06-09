@@ -1,4 +1,4 @@
-import { NextResponse } from "next/headers"
+import { NextResponse } from "next/server"
 import { headers } from "next/headers"
 import Stripe from "stripe"
 import { supabaseAdmin } from "@/lib/supabase-admin"
@@ -35,33 +35,42 @@ export async function POST(req: Request) {
       const meditationPurpose = session.metadata?.meditationPurpose || ""
       const sessionIdentifier = session.metadata?.sessionIdentifier
 
-      console.log(`Payment successful for ${customerEmail}, session: ${sessionIdentifier}`)
+      console.log(`Payment successful for ${customerEmail}, session: ${sessionIdentifier}, payment_id: ${session.id}`)
 
       let formData = null
 
       // Find the specific form submission using the session identifier
       if (sessionIdentifier) {
         try {
-          const { data, error } = await supabaseAdmin
+          // First, get the current data
+          const { data: currentData, error: selectError } = await supabaseAdmin
             .from("meditation_submissions")
-            .update({
-              payment_status: "paid",
-              payment_id: session.id,
-              updated_at: new Date().toISOString(),
-            })
+            .select("*")
             .eq("session_identifier", sessionIdentifier)
-            .select()
+            .single()
 
-          if (error) {
-            console.error("Error updating payment status in Supabase:", error)
-          } else {
-            console.log("Updated payment status for submission:", data.length)
-            // Store form data for admin notification
-            if (data && data.length > 0) {
-              formData = data[0]
-              console.log("Found form data for session:", sessionIdentifier)
+          if (selectError) {
+            console.error("Error finding form submission:", selectError)
+          } else if (currentData) {
+            formData = currentData
+            console.log("Found form data for session:", sessionIdentifier)
+
+            // Now update with payment information
+            const { data: updateData, error: updateError } = await supabaseAdmin
+              .from("meditation_submissions")
+              .update({
+                payment_status: "paid",
+                payment_id: session.id,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("session_identifier", sessionIdentifier)
+              .select()
+
+            if (updateError) {
+              console.error("Error updating payment status:", updateError)
             } else {
-              console.warn("No form data found for session identifier:", sessionIdentifier)
+              console.log("Successfully updated payment status for session:", sessionIdentifier)
+              console.log("Payment ID set to:", session.id)
             }
           }
         } catch (dbError) {
@@ -73,22 +82,22 @@ export async function POST(req: Request) {
         // Fallback: try to find by email and most recent submission
         if (customerEmail) {
           try {
-            const { data, error } = await supabaseAdmin
+            const { data: fallbackData, error: fallbackError } = await supabaseAdmin
               .from("meditation_submissions")
-              .select()
+              .select("*")
               .eq("email", customerEmail)
               .eq("payment_status", "pending")
               .order("created_at", { ascending: false })
               .limit(1)
 
-            if (error) {
-              console.error("Error finding form submission by email:", error)
-            } else if (data && data.length > 0) {
-              formData = data[0]
+            if (fallbackError) {
+              console.error("Error finding form submission by email:", fallbackError)
+            } else if (fallbackData && fallbackData.length > 0) {
+              formData = fallbackData[0]
               console.log("Found form data using fallback method for email:", customerEmail)
 
               // Update this record with payment info
-              await supabaseAdmin
+              const { error: updateError } = await supabaseAdmin
                 .from("meditation_submissions")
                 .update({
                   payment_status: "paid",
@@ -96,6 +105,12 @@ export async function POST(req: Request) {
                   updated_at: new Date().toISOString(),
                 })
                 .eq("id", formData.id)
+
+              if (updateError) {
+                console.error("Error updating payment status (fallback):", updateError)
+              } else {
+                console.log("Successfully updated payment status (fallback), payment_id:", session.id)
+              }
             }
           } catch (dbError) {
             console.error("Fallback database error:", dbError)
@@ -116,12 +131,20 @@ export async function POST(req: Request) {
 
         if (!emailResult.success) {
           console.error("Failed to send confirmation email:", emailResult.error)
+        } else {
+          console.log("Customer confirmation email sent successfully")
         }
       }
 
       // Send notification email to admin
       const adminEmail = process.env.EMAIL_SERVER_USER
-      if (adminEmail) {
+      if (adminEmail && formData) {
+        console.log("Sending admin notification with form data:", {
+          limiting_beliefs: formData.limiting_beliefs,
+          conscious_struggles: formData.conscious_struggles,
+          specific_objective: formData.specific_objective,
+        })
+
         const { subject, text, html } = generateAdminOrderNotificationEmail(
           customerName,
           customerEmail || "Unknown",
@@ -142,6 +165,11 @@ export async function POST(req: Request) {
         } else {
           console.log("Admin notification email sent successfully")
         }
+      } else {
+        console.warn("Admin email not sent - missing admin email or form data", {
+          adminEmail: !!adminEmail,
+          formData: !!formData,
+        })
       }
     }
 

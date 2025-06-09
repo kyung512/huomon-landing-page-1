@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer"
 
 // Create a transporter using SMTP
-const transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransporter({
   host: process.env.EMAIL_SERVER_HOST,
   port: Number(process.env.EMAIL_SERVER_PORT),
   secure: process.env.EMAIL_SERVER_PORT === "465", // true for 465, false for other ports
@@ -157,7 +157,7 @@ export function generateOrderConfirmationEmail(name: string, meditationPurpose: 
         </div>
         <div class="footer">
           <p>&copy; ${new Date().getFullYear()} ManifestVault. All rights reserved.</p>
-          <p>This email was sent to ${name} at ${name}.</p>
+          <p>This email was sent to ${name}.</p>
         </div>
       </div>
     </body>
@@ -167,7 +167,7 @@ export function generateOrderConfirmationEmail(name: string, meditationPurpose: 
   return { subject, text, html }
 }
 
-// New function for admin notification emails
+// Admin notification email with complete form details
 export function generateAdminOrderNotificationEmail(
   customerName: string,
   customerEmail: string,
@@ -177,19 +177,16 @@ export function generateAdminOrderNotificationEmail(
 ) {
   const subject = `New Order: ${customerName} - ManifestVault`
 
-  const formDataText = formData
-    ? `
-    Form Submission Details:
-    - Limiting Beliefs: ${formData.limiting_beliefs || "Not provided"}
-    - Conscious Struggles: ${formData.conscious_struggles || "Not provided"}
-    - Specific Objective: ${formData.specific_objective || "Not provided"}
-    - Meditation Style: ${formData.meditation_style || "Not provided"}
-    - Voice Gender: ${formData.voice_gender || "Not provided"}
-    - Voice Tonality: ${formData.voice_tonality || "Not provided"}
-    - Dream Life Visualization: ${formData.dream_life_visualization || "Not provided"}
-    - Additional Info: ${formData.additional_info || "Not provided"}
-    `
-    : ""
+  // Ensure we have form data and extract the details
+  const limitingBeliefs = formData?.limiting_beliefs || "Not provided"
+  const consciousStruggles = formData?.conscious_struggles || "Not provided"
+  const specificObjective = formData?.specific_objective || "Not provided"
+  const meditationStyle = formData?.meditation_style || "Not provided"
+  const voiceGender = formData?.voice_gender || "Not provided"
+  const voiceTonality = formData?.voice_tonality || "Not provided"
+  const dreamLifeVisualization = formData?.dream_life_visualization || "Not provided"
+  const additionalInfo = formData?.additional_info || "Not provided"
+  const customVoiceUrl = formData?.custom_voice_url || "No custom voice uploaded"
 
   const text = `
     New Order Notification
@@ -205,7 +202,16 @@ export function generateAdminOrderNotificationEmail(
     - Payment ID: ${sessionId}
     - Date: ${new Date().toLocaleString()}
 
-    ${formDataText}
+    Form Submission Details:
+    - Limiting Beliefs: ${limitingBeliefs}
+    - Conscious Struggles: ${consciousStruggles}
+    - Specific Objective: ${specificObjective}
+    - Meditation Style: ${meditationStyle}
+    - Voice Gender: ${voiceGender}
+    - Voice Tonality: ${voiceTonality}
+    - Dream Life Visualization: ${dreamLifeVisualization}
+    - Additional Info: ${additionalInfo}
+    - Custom Voice: ${customVoiceUrl}
 
     Please begin creating the custom meditation package for this customer.
     They have been informed that they will receive their package within 48 hours.
@@ -229,7 +235,7 @@ export function generateAdminOrderNotificationEmail(
           padding: 0;
         }
         .container {
-          max-width: 600px;
+          max-width: 700px;
           margin: 0 auto;
           padding: 20px;
           background-color: #ffffff;
@@ -277,11 +283,30 @@ export function generateAdminOrderNotificationEmail(
           border-left: 4px solid #6366f1;
         }
         .detail-row {
-          margin-bottom: 8px;
+          margin-bottom: 12px;
+          padding: 8px 0;
+          border-bottom: 1px solid #eee;
+        }
+        .detail-row:last-child {
+          border-bottom: none;
         }
         .highlight {
           color: #9333ea;
           font-weight: bold;
+        }
+        .form-field {
+          margin-bottom: 15px;
+        }
+        .form-field strong {
+          color: #6366f1;
+          display: block;
+          margin-bottom: 5px;
+        }
+        .form-field-content {
+          background-color: #f8f9fa;
+          padding: 8px;
+          border-radius: 4px;
+          border-left: 3px solid #6366f1;
         }
       </style>
     </head>
@@ -309,25 +334,58 @@ export function generateAdminOrderNotificationEmail(
             <div class="detail-row"><strong>Date:</strong> ${new Date().toLocaleString()}</div>
           </div>
           
-          ${
-            formData
-              ? `
           <div class="form-details">
-            <h3>Form Submission Details:</h3>
-            <div class="detail-row"><strong>Limiting Beliefs:</strong> ${formData.limiting_beliefs || "Not provided"}</div>
-            <div class="detail-row"><strong>Conscious Struggles:</strong> ${formData.conscious_struggles || "Not provided"}</div>
-            <div class="detail-row"><strong>Specific Objective:</strong> ${formData.specific_objective || "Not provided"}</div>
-            <div class="detail-row"><strong>Meditation Style:</strong> ${formData.meditation_style || "Not provided"}</div>
-            <div class="detail-row"><strong>Voice Gender:</strong> ${formData.voice_gender || "Not provided"}</div>
-            <div class="detail-row"><strong>Voice Tonality:</strong> ${formData.voice_tonality || "Not provided"}</div>
-            <div class="detail-row"><strong>Dream Life Visualization:</strong> ${formData.dream_life_visualization || "Not provided"}</div>
-            <div class="detail-row"><strong>Additional Info:</strong> ${formData.additional_info || "Not provided"}</div>
+            <h3>📝 Form Submission Details:</h3>
+            
+            <div class="form-field">
+              <strong>Limiting Beliefs:</strong>
+              <div class="form-field-content">${limitingBeliefs}</div>
+            </div>
+            
+            <div class="form-field">
+              <strong>Conscious Struggles:</strong>
+              <div class="form-field-content">${consciousStruggles}</div>
+            </div>
+            
+            <div class="form-field">
+              <strong>Specific Objective:</strong>
+              <div class="form-field-content">${specificObjective}</div>
+            </div>
+            
+            <div class="form-field">
+              <strong>Meditation Style:</strong>
+              <div class="form-field-content">${meditationStyle}</div>
+            </div>
+            
+            <div class="form-field">
+              <strong>Voice Gender:</strong>
+              <div class="form-field-content">${voiceGender}</div>
+            </div>
+            
+            <div class="form-field">
+              <strong>Voice Tonality:</strong>
+              <div class="form-field-content">${voiceTonality}</div>
+            </div>
+            
+            <div class="form-field">
+              <strong>Dream Life Visualization:</strong>
+              <div class="form-field-content">${dreamLifeVisualization}</div>
+            </div>
+            
+            <div class="form-field">
+              <strong>Additional Information:</strong>
+              <div class="form-field-content">${additionalInfo}</div>
+            </div>
+            
+            <div class="form-field">
+              <strong>Custom Voice Sample:</strong>
+              <div class="form-field-content">
+                ${customVoiceUrl !== "No custom voice uploaded" ? `<a href="${customVoiceUrl}" target="_blank">Download Voice Sample</a>` : customVoiceUrl}
+              </div>
+            </div>
           </div>
-          `
-              : ""
-          }
           
-          <p><strong>Action Required:</strong> Please begin creating the custom meditation package for this customer. They have been informed that they will receive their package within 48 hours.</p>
+          <p><strong>⚡ Action Required:</strong> Please begin creating the custom meditation package for this customer. They have been informed that they will receive their package within 48 hours.</p>
           
         </div>
         <div class="footer">
