@@ -36,32 +36,66 @@ export async function POST(req: Request) {
       const sessionIdentifier = session.metadata?.sessionIdentifier
       const paymentId = session.id
 
-      console.log(`Payment successful for ${customerEmail}`)
+      console.log("=== WEBHOOK PROCESSING START ===")
+      console.log(`Payment successful for: ${customerEmail}`)
       console.log(`Session identifier: ${sessionIdentifier}`)
       console.log(`Payment ID: ${paymentId}`)
+      console.log(`Event ID: ${event.id}`)
 
       let formData = null
       let updateSuccess = false
+      const updateAttempts = []
 
-      // Find and update the specific form submission using the session identifier
+      // Test database connection first
+      try {
+        console.log("Testing database connection...")
+        const { data: testData, error: testError } = await supabaseAdmin
+          .from("meditation_submissions")
+          .select("count")
+          .limit(1)
+
+        if (testError) {
+          console.error("❌ Database connection test failed:", testError)
+          updateAttempts.push({ method: "connection_test", success: false, error: testError.message })
+        } else {
+          console.log("✅ Database connection test successful")
+          updateAttempts.push({ method: "connection_test", success: true })
+        }
+      } catch (connError) {
+        console.error("❌ Database connection exception:", connError)
+        updateAttempts.push({ method: "connection_test", success: false, error: connError.message })
+      }
+
+      // Method 1: Find and update using session identifier
       if (sessionIdentifier) {
         try {
-          console.log(`Looking for form submission with session_identifier: ${sessionIdentifier}`)
+          console.log(`\n--- METHOD 1: Session Identifier Lookup ---`)
+          console.log(`Looking for session_identifier: ${sessionIdentifier}`)
 
           // First, get the current data
           const { data: currentData, error: selectError } = await supabaseAdmin
             .from("meditation_submissions")
             .select("*")
             .eq("session_identifier", sessionIdentifier)
-            .single()
+
+          console.log("Select query result:", { data: currentData, error: selectError })
 
           if (selectError) {
-            console.error("Error finding form submission by session_identifier:", selectError)
-          } else if (currentData) {
-            formData = currentData
-            console.log("Found form data for session:", sessionIdentifier)
-            console.log("Current payment_status:", currentData.payment_status)
-            console.log("Current payment_id:", currentData.payment_id)
+            console.error("❌ Error finding form submission by session_identifier:", selectError)
+            updateAttempts.push({
+              method: "session_identifier_select",
+              success: false,
+              error: selectError.message,
+            })
+          } else if (currentData && currentData.length > 0) {
+            formData = currentData[0]
+            console.log("✅ Found form data for session:", sessionIdentifier)
+            console.log("Record details:", {
+              id: formData.id,
+              email: formData.email,
+              current_payment_status: formData.payment_status,
+              current_payment_id: formData.payment_id,
+            })
 
             // Now update with payment information
             const updateData = {
@@ -70,7 +104,7 @@ export async function POST(req: Request) {
               updated_at: new Date().toISOString(),
             }
 
-            console.log("Updating with data:", updateData)
+            console.log("Attempting update with data:", updateData)
 
             const { data: updatedData, error: updateError } = await supabaseAdmin
               .from("meditation_submissions")
@@ -78,33 +112,64 @@ export async function POST(req: Request) {
               .eq("session_identifier", sessionIdentifier)
               .select()
 
+            console.log("Update query result:", { data: updatedData, error: updateError })
+
             if (updateError) {
-              console.error("Error updating payment status:", updateError)
+              console.error("❌ Error updating payment status:", updateError)
               console.error("Update error details:", JSON.stringify(updateError, null, 2))
+              updateAttempts.push({
+                method: "session_identifier_update",
+                success: false,
+                error: updateError.message,
+                details: updateError,
+              })
             } else {
-              console.log("Successfully updated payment status for session:", sessionIdentifier)
+              console.log("✅ Successfully updated payment status for session:", sessionIdentifier)
               console.log("Updated data:", updatedData)
               updateSuccess = true
+              updateAttempts.push({
+                method: "session_identifier_update",
+                success: true,
+                recordsUpdated: updatedData?.length || 0,
+              })
 
               // Update formData with the new information
               if (updatedData && updatedData.length > 0) {
                 formData = updatedData[0]
-                console.log("Updated payment_id in formData:", formData.payment_id)
+                console.log("✅ Updated payment_id in formData:", formData.payment_id)
               }
             }
           } else {
-            console.warn("No form submission found with session_identifier:", sessionIdentifier)
+            console.warn("⚠️ No form submission found with session_identifier:", sessionIdentifier)
+            updateAttempts.push({
+              method: "session_identifier_select",
+              success: false,
+              error: "No records found",
+            })
           }
         } catch (dbError) {
-          console.error("Database error during session_identifier lookup:", dbError)
+          console.error("❌ Database error during session_identifier lookup:", dbError)
+          updateAttempts.push({
+            method: "session_identifier_exception",
+            success: false,
+            error: dbError.message,
+          })
         }
+      } else {
+        console.warn("⚠️ No session identifier provided in Stripe metadata")
+        updateAttempts.push({
+          method: "session_identifier_missing",
+          success: false,
+          error: "No session identifier in metadata",
+        })
       }
 
-      // Fallback: try to find by email if session identifier method failed
+      // Method 2: Fallback using email if session identifier method failed
       if (!updateSuccess && customerEmail) {
-        console.log("Attempting fallback method using email:", customerEmail)
-
         try {
+          console.log(`\n--- METHOD 2: Email Fallback ---`)
+          console.log(`Attempting fallback method using email: ${customerEmail}`)
+
           const { data: fallbackData, error: fallbackError } = await supabaseAdmin
             .from("meditation_submissions")
             .select("*")
@@ -113,12 +178,24 @@ export async function POST(req: Request) {
             .order("created_at", { ascending: false })
             .limit(1)
 
+          console.log("Fallback select result:", { data: fallbackData, error: fallbackError })
+
           if (fallbackError) {
-            console.error("Error finding form submission by email:", fallbackError)
+            console.error("❌ Error finding form submission by email:", fallbackError)
+            updateAttempts.push({
+              method: "email_fallback_select",
+              success: false,
+              error: fallbackError.message,
+            })
           } else if (fallbackData && fallbackData.length > 0) {
             formData = fallbackData[0]
-            console.log("Found form data using fallback method for email:", customerEmail)
-            console.log("Fallback record ID:", formData.id)
+            console.log("✅ Found form data using fallback method for email:", customerEmail)
+            console.log("Fallback record details:", {
+              id: formData.id,
+              session_identifier: formData.session_identifier,
+              current_payment_status: formData.payment_status,
+              current_payment_id: formData.payment_id,
+            })
 
             // Update this record with payment info
             const updateData = {
@@ -135,34 +212,135 @@ export async function POST(req: Request) {
               .eq("id", formData.id)
               .select()
 
+            console.log("Fallback update result:", { data: updatedFallbackData, error: updateError })
+
             if (updateError) {
-              console.error("Error updating payment status (fallback):", updateError)
+              console.error("❌ Error updating payment status (fallback):", updateError)
               console.error("Fallback update error details:", JSON.stringify(updateError, null, 2))
+              updateAttempts.push({
+                method: "email_fallback_update",
+                success: false,
+                error: updateError.message,
+                details: updateError,
+              })
             } else {
-              console.log("Successfully updated payment status (fallback)")
+              console.log("✅ Successfully updated payment status (fallback)")
               console.log("Fallback updated data:", updatedFallbackData)
               updateSuccess = true
+              updateAttempts.push({
+                method: "email_fallback_update",
+                success: true,
+                recordsUpdated: updatedFallbackData?.length || 0,
+              })
 
               // Update formData with the new information
               if (updatedFallbackData && updatedFallbackData.length > 0) {
                 formData = updatedFallbackData[0]
-                console.log("Fallback updated payment_id in formData:", formData.payment_id)
+                console.log("✅ Fallback updated payment_id in formData:", formData.payment_id)
               }
             }
           } else {
-            console.warn("No pending form submission found for email:", customerEmail)
+            console.warn("⚠️ No pending form submission found for email:", customerEmail)
+            updateAttempts.push({
+              method: "email_fallback_select",
+              success: false,
+              error: "No pending records found for email",
+            })
           }
         } catch (dbError) {
-          console.error("Fallback database error:", dbError)
+          console.error("❌ Fallback database error:", dbError)
+          updateAttempts.push({
+            method: "email_fallback_exception",
+            success: false,
+            error: dbError.message,
+          })
+        }
+      }
+
+      // Method 3: Direct update by payment_id if we have it
+      if (!updateSuccess && paymentId) {
+        try {
+          console.log(`\n--- METHOD 3: Direct Payment ID Update ---`)
+          console.log(`Attempting direct update for any record that might match criteria`)
+
+          // Try to find any record that could be this payment
+          const { data: directData, error: directError } = await supabaseAdmin
+            .from("meditation_submissions")
+            .select("*")
+            .is("payment_id", null)
+            .eq("payment_status", "pending")
+            .order("created_at", { ascending: false })
+            .limit(5) // Get last 5 pending records
+
+          console.log("Direct search result:", { data: directData, error: directError })
+
+          if (directData && directData.length > 0) {
+            // Try to match by email if available
+            let targetRecord = null
+            if (customerEmail) {
+              targetRecord = directData.find((record) => record.email === customerEmail)
+            }
+
+            // If no email match, take the most recent
+            if (!targetRecord) {
+              targetRecord = directData[0]
+            }
+
+            if (targetRecord) {
+              console.log("Found target record for direct update:", targetRecord.id)
+
+              const updateData = {
+                payment_status: "paid",
+                payment_id: paymentId,
+                updated_at: new Date().toISOString(),
+              }
+
+              const { data: directUpdatedData, error: directUpdateError } = await supabaseAdmin
+                .from("meditation_submissions")
+                .update(updateData)
+                .eq("id", targetRecord.id)
+                .select()
+
+              if (directUpdateError) {
+                console.error("❌ Direct update failed:", directUpdateError)
+                updateAttempts.push({
+                  method: "direct_update",
+                  success: false,
+                  error: directUpdateError.message,
+                })
+              } else {
+                console.log("✅ Direct update successful")
+                updateSuccess = true
+                formData = directUpdatedData[0]
+                updateAttempts.push({
+                  method: "direct_update",
+                  success: true,
+                  recordsUpdated: directUpdatedData?.length || 0,
+                })
+              }
+            }
+          }
+        } catch (directError) {
+          console.error("❌ Direct update exception:", directError)
+          updateAttempts.push({
+            method: "direct_update_exception",
+            success: false,
+            error: directError.message,
+          })
         }
       }
 
       // Log final status
+      console.log("\n=== FINAL UPDATE STATUS ===")
+      console.log("Update success:", updateSuccess)
+      console.log("Update attempts:", updateAttempts)
       if (updateSuccess) {
         console.log("✅ Payment ID successfully updated in database")
         console.log("Final payment_id:", formData?.payment_id)
+        console.log("Final record ID:", formData?.id)
       } else {
         console.error("❌ Failed to update payment ID in database")
+        console.error("All attempts failed:", updateAttempts)
       }
 
       // Send confirmation email to customer
@@ -171,7 +349,7 @@ export async function POST(req: Request) {
           customerName,
           meditationPurpose,
           paymentId,
-          sessionIdentifier, // Pass session identifier to customer email
+          sessionIdentifier,
         )
 
         const emailResult = await sendEmail({
@@ -184,48 +362,72 @@ export async function POST(req: Request) {
         if (!emailResult.success) {
           console.error("Failed to send confirmation email:", emailResult.error)
         } else {
-          console.log("Customer confirmation email sent successfully")
+          console.log("✅ Customer confirmation email sent successfully")
         }
       }
 
       // Send notification email to admin
       const adminEmail = process.env.EMAIL_SERVER_USER
-      if (adminEmail && formData) {
-        console.log("Sending admin notification with form data")
-        console.log("Form data payment_id for admin email:", formData.payment_id)
-        console.log("Session identifier for admin email:", formData.session_identifier)
+      if (adminEmail) {
+        console.log("Sending admin notification")
+
+        // Include debug information in admin email
+        const debugInfo = {
+          updateSuccess,
+          updateAttempts,
+          webhookEventId: event.id,
+          stripeSessionId: session.id,
+          formDataFound: !!formData,
+          formDataId: formData?.id,
+        }
 
         const { subject, text, html } = generateAdminOrderNotificationEmail(
           customerName,
           customerEmail || "Unknown",
           meditationPurpose,
-          paymentId, // Use the payment ID from Stripe session
-          formData, // This now includes the session_identifier
+          paymentId,
+          formData,
+        )
+
+        // Add debug info to admin email
+        const enhancedHtml = html.replace(
+          "</div>",
+          `
+          <div class="technical-details">
+            <h3>🔍 Debug Information:</h3>
+            <div class="tech-field"><strong>Update Success:</strong> ${updateSuccess ? "✅ Yes" : "❌ No"}</div>
+            <div class="tech-field"><strong>Webhook Event ID:</strong> ${event.id}</div>
+            <div class="tech-field"><strong>Update Attempts:</strong> ${updateAttempts.length}</div>
+            <div class="tech-field"><strong>Form Data Found:</strong> ${formData ? "✅ Yes" : "❌ No"}</div>
+            ${formData ? `<div class="tech-field"><strong>Database Record ID:</strong> ${formData.id}</div>` : ""}
+            <details>
+              <summary>Detailed Update Attempts</summary>
+              <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px; font-size: 11px;">${JSON.stringify(updateAttempts, null, 2)}</pre>
+            </details>
+          </div>
+          </div>`,
         )
 
         const adminEmailResult = await sendEmail({
           to: adminEmail,
-          subject,
+          subject: updateSuccess ? subject : `[UPDATE FAILED] ${subject}`,
           text,
-          html,
+          html: enhancedHtml,
         })
 
         if (!adminEmailResult.success) {
           console.error("Failed to send admin notification email:", adminEmailResult.error)
         } else {
-          console.log("Admin notification email sent successfully")
+          console.log("✅ Admin notification email sent successfully")
         }
-      } else {
-        console.warn("Admin email not sent - missing admin email or form data", {
-          adminEmail: !!adminEmail,
-          formData: !!formData,
-        })
       }
+
+      console.log("=== WEBHOOK PROCESSING END ===\n")
     }
 
     return NextResponse.json({ received: true })
   } catch (error) {
-    console.error("Webhook error:", error)
+    console.error("❌ Webhook error:", error)
     return NextResponse.json({ error: "Webhook handler failed" }, { status: 500 })
   }
 }
