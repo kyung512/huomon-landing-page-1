@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer"
 
-// Create a transporter using SMTP - Fixed the typo here
+// Create a transporter using SMTP
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_SERVER_HOST,
   port: Number(process.env.EMAIL_SERVER_PORT),
@@ -36,7 +36,12 @@ export async function sendEmail(data: EmailData) {
   }
 }
 
-export function generateOrderConfirmationEmail(name: string, meditationPurpose: string) {
+export function generateOrderConfirmationEmail(
+  name: string,
+  meditationPurpose: string,
+  paymentId: string,
+  sessionIdentifier?: string,
+) {
   const subject = "Your ManifestVault Meditation Package - Order Confirmation"
 
   const text = `
@@ -50,13 +55,16 @@ export function generateOrderConfirmationEmail(name: string, meditationPurpose: 
     - Package: Custom Meditation Package
     - Focus Area: ${meditationPurpose || "Personal Growth"}
     - Amount: $29.00 USD
+    - Order ID: ${paymentId}
+    ${sessionIdentifier ? `- Session ID: ${sessionIdentifier}` : ""}
 
     What happens next:
     1. Our team is now creating your personalized meditation package based on the information you provided.
     2. Within the next 48 hours, you'll receive another email with access to your custom meditations.
     3. You'll have lifetime access to your meditation package, including any future updates.
 
-    If you have any questions or need assistance, please reply to this email or contact us at contact@manifestvault.com.
+    If you have any questions or need assistance, please reply to this email or contact us at contact@manifestvault.com. 
+    ${sessionIdentifier ? `Please include your Session ID (${sessionIdentifier}) in any correspondence for faster support.` : ""}
 
     Thank you for investing in your transformation journey with ManifestVault.
 
@@ -113,6 +121,21 @@ export function generateOrderConfirmationEmail(name: string, meditationPurpose: 
           border-radius: 5px;
           margin: 20px 0;
         }
+        .session-info {
+          background-color: #f0f8ff;
+          padding: 12px;
+          border-radius: 5px;
+          margin: 15px 0;
+          border-left: 4px solid #6366f1;
+        }
+        .session-id {
+          font-family: monospace;
+          background-color: #e8f4f8;
+          padding: 4px 8px;
+          border-radius: 3px;
+          font-size: 12px;
+          color: #2563eb;
+        }
         .button {
           display: inline-block;
           padding: 10px 20px;
@@ -140,7 +163,21 @@ export function generateOrderConfirmationEmail(name: string, meditationPurpose: 
             <p><strong>Package:</strong> Custom Meditation Package</p>
             <p><strong>Focus Area:</strong> ${meditationPurpose || "Personal Growth"}</p>
             <p><strong>Amount:</strong> $29.00 USD</p>
+            <p><strong>Order ID:</strong> ${paymentId}</p>
+            ${sessionIdentifier ? `<p><strong>Session ID:</strong> <span class="session-id">${sessionIdentifier}</span></p>` : ""}
           </div>
+
+          ${
+            sessionIdentifier
+              ? `
+          <div class="session-info">
+            <h4>📋 For Your Records</h4>
+            <p>Your Session ID is: <strong class="session-id">${sessionIdentifier}</strong></p>
+            <p>Please save this Session ID for your records. Include it in any correspondence with our support team for faster assistance.</p>
+          </div>
+          `
+              : ""
+          }
           
           <h3>What happens next:</h3>
           <ol>
@@ -158,6 +195,7 @@ export function generateOrderConfirmationEmail(name: string, meditationPurpose: 
         <div class="footer">
           <p>&copy; ${new Date().getFullYear()} ManifestVault. All rights reserved.</p>
           <p>This email was sent to ${name}.</p>
+          ${sessionIdentifier ? `<p>Session ID: ${sessionIdentifier}</p>` : ""}
         </div>
       </div>
     </body>
@@ -172,7 +210,7 @@ export function generateAdminOrderNotificationEmail(
   customerName: string,
   customerEmail: string,
   meditationPurpose: string,
-  sessionId: string,
+  paymentId: string,
   formData?: any,
 ) {
   const subject = `New Order: ${customerName} - ManifestVault`
@@ -187,6 +225,7 @@ export function generateAdminOrderNotificationEmail(
   const dreamLifeVisualization = formData?.dream_life_visualization || "Not provided"
   const additionalInfo = formData?.additional_info || "Not provided"
   const customVoiceUrl = formData?.custom_voice_url || "No custom voice uploaded"
+  const sessionIdentifier = formData?.session_identifier || "Not available"
 
   const text = `
     New Order Notification
@@ -199,7 +238,8 @@ export function generateAdminOrderNotificationEmail(
     - Package: Custom Meditation Package
     - Focus Area: ${meditationPurpose || "Personal Growth"}
     - Amount: $29.00 USD
-    - Payment ID: ${sessionId}
+    - Payment ID: ${paymentId}
+    - Session ID: ${sessionIdentifier}
     - Date: ${new Date().toLocaleString()}
 
     Form Submission Details:
@@ -212,6 +252,11 @@ export function generateAdminOrderNotificationEmail(
     - Dream Life Visualization: ${dreamLifeVisualization}
     - Additional Info: ${additionalInfo}
     - Custom Voice: ${customVoiceUrl}
+
+    Technical Information:
+    - Session Identifier: ${sessionIdentifier}
+    - Payment ID: ${paymentId}
+    - Database Record ID: ${formData?.id || "Unknown"}
 
     Please begin creating the custom meditation package for this customer.
     They have been informed that they will receive their package within 48 hours.
@@ -282,6 +327,13 @@ export function generateAdminOrderNotificationEmail(
           margin: 20px 0;
           border-left: 4px solid #6366f1;
         }
+        .technical-details {
+          background-color: #f8f9fa;
+          padding: 15px;
+          border-radius: 5px;
+          margin: 20px 0;
+          border-left: 4px solid #28a745;
+        }
         .detail-row {
           margin-bottom: 12px;
           padding: 8px 0;
@@ -308,6 +360,21 @@ export function generateAdminOrderNotificationEmail(
           border-radius: 4px;
           border-left: 3px solid #6366f1;
         }
+        .session-id {
+          font-family: monospace;
+          background-color: #e8f4f8;
+          padding: 4px 8px;
+          border-radius: 3px;
+          font-size: 12px;
+          color: #2563eb;
+        }
+        .tech-field {
+          margin-bottom: 10px;
+        }
+        .tech-field strong {
+          color: #28a745;
+          margin-right: 10px;
+        }
       </style>
     </head>
     <body>
@@ -330,8 +397,18 @@ export function generateAdminOrderNotificationEmail(
             <div class="detail-row"><strong>Package:</strong> Custom Meditation Package</div>
             <div class="detail-row"><strong>Focus Area:</strong> <span class="highlight">${meditationPurpose || "Personal Growth"}</span></div>
             <div class="detail-row"><strong>Amount:</strong> $29.00 USD</div>
-            <div class="detail-row"><strong>Payment ID:</strong> ${sessionId}</div>
+            <div class="detail-row"><strong>Payment ID:</strong> ${paymentId}</div>
+            <div class="detail-row"><strong>Session ID:</strong> <span class="session-id">${sessionIdentifier}</span></div>
             <div class="detail-row"><strong>Date:</strong> ${new Date().toLocaleString()}</div>
+          </div>
+
+          <div class="technical-details">
+            <h3>🔧 Technical Information:</h3>
+            <div class="tech-field"><strong>Session Identifier:</strong> <span class="session-id">${sessionIdentifier}</span></div>
+            <div class="tech-field"><strong>Payment ID:</strong> ${paymentId}</div>
+            <div class="tech-field"><strong>Database Record ID:</strong> ${formData?.id || "Unknown"}</div>
+            <div class="tech-field"><strong>Payment Status:</strong> ${formData?.payment_status || "Unknown"}</div>
+            <div class="tech-field"><strong>Created At:</strong> ${formData?.created_at ? new Date(formData.created_at).toLocaleString() : "Unknown"}</div>
           </div>
           
           <div class="form-details">
@@ -391,6 +468,7 @@ export function generateAdminOrderNotificationEmail(
         <div class="footer">
           <p>This is an automated notification from the ManifestVault system.</p>
           <p>&copy; ${new Date().getFullYear()} ManifestVault. All rights reserved.</p>
+          <p>Session ID: <span class="session-id">${sessionIdentifier}</span></p>
         </div>
       </div>
     </body>

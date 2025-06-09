@@ -167,7 +167,12 @@ export async function POST(req: Request) {
 
       // Send confirmation email to customer
       if (customerEmail) {
-        const { subject, text, html } = generateOrderConfirmationEmail(customerName, meditationPurpose)
+        const { subject, text, html } = generateOrderConfirmationEmail(
+          customerName,
+          meditationPurpose,
+          paymentId,
+          sessionIdentifier, // Pass session identifier to customer email
+        )
 
         const emailResult = await sendEmail({
           to: customerEmail,
@@ -188,13 +193,14 @@ export async function POST(req: Request) {
       if (adminEmail && formData) {
         console.log("Sending admin notification with form data")
         console.log("Form data payment_id for admin email:", formData.payment_id)
+        console.log("Session identifier for admin email:", formData.session_identifier)
 
         const { subject, text, html } = generateAdminOrderNotificationEmail(
           customerName,
           customerEmail || "Unknown",
           meditationPurpose,
           paymentId, // Use the payment ID from Stripe session
-          formData,
+          formData, // This now includes the session_identifier
         )
 
         const adminEmailResult = await sendEmail({
