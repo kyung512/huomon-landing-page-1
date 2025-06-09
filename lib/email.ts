@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer"
 
-// Create a transporter using SMTP
-const transporter = nodemailer.createTransporter({
+// Create a transporter using SMTP - Fixed the typo here
+const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_SERVER_HOST,
   port: Number(process.env.EMAIL_SERVER_PORT),
   secure: process.env.EMAIL_SERVER_PORT === "465", // true for 465, false for other ports
